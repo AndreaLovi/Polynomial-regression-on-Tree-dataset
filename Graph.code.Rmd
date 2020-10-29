@@ -1,0 +1,257 @@
+### STAT40830 Assignment 1 ###
+
+# Clean up the current environment
+rm(list=ls())
+
+# Make results reproducible
+set.seed(12345)
+
+#------------------------------------------------
+
+# Question 1
+
+# For this question, load in the trees data set from the datasets package.
+library(datasets)
+head(trees)
+
+# This question is based on the materials of Weeks 1 & 2.  You should prepare your
+# solution using only functions that have been introduced in these weeks.
+# See the Assignment 1 document on Brightspace for details of the Question.
+
+library(mvtnorm)
+
+# Define criterion to be minimised in Gaussian process regression
+gp_criterion = function(p,x,y) {
+  ###sig_sq = exp(p[1])###
+  ###rho_sq = exp(p[2])###
+  ###tau_sq = exp(p[3])###
+  Mu = rep(0, length(x))
+  Sigma = sig_sq * exp( - rho_sq * outer(x, x, '-')^2 ) + tau_sq * diag(length(x))
+  ll = dmvnorm(y, Mu, Sigma, log = TRUE)
+  return(-ll)
+}
+
+# Implement your regression_fit function here.
+
+regression_fit <- function(x_g = pretty(x,n = 100), x = scale(trees$Girth)[,1] , y = scale(trees$Height)[,1], p = 1, method = "BFGS")  {
+  
+  #Regression version
+  
+  X <- cbind(1, x, x^(p+1), x^(p+2), x^(p+3))
+  X_g <- cbind(1, x_g, x_g^(p+1), x_g^(p+2), x_g^(p+3))
+  
+  # PREDICTION 1
+  
+  pred1 <- X_g %*% solve(t(X)%*%X, (t(X)%*%y))
+  
+  
+  #Gaussian Version
+  
+  gp_criterion = function(p = c(0,0,0),x = scale(trees$Girth)[,1],y = scale(trees$Height)[,1]) {
+    sig_sq = exp(p[1])
+    rho_sq = exp(p[2])
+    tau_sq = exp(p[3])
+    Mu = rep(0, length(x))
+    Sigma = sig_sq * exp( - rho_sq * outer(x, x, '-')^2 ) + tau_sq * diag(length(x))
+    ll = dmvnorm(y, Mu, Sigma, log = TRUE)
+    return(-ll)
+  }
+  
+  BFGS <- optim(c(0, 0, 0), gp_criterion, method = 'BFGS')
+  gp_criterion(BFGS$par)
+  
+  #Define minimized variable
+  
+  sig_sq <- exp(BFGS$par[1])
+  rho_sq <- exp(BFGS$par[2])
+  tau_sq <- exp(BFGS$par[3])
+  
+  # Create covariance matrix
+  
+  C <- sig_sq * exp( - rho_sq * outer(x_g, x, '-')^2 )
+  Sigma <- sig_sq * exp( - rho_sq * outer(x, x, '-')^2 ) + tau_sq * diag(length(x))
+  
+  #prediction 2
+  
+  pred2 <- C %*% solve(Sigma, y)
+  
+  #Answers
+  
+  answer <<- cbind(pred1, pred2)
+  
+  print(pred1)
+  print(pred2)
+}
+
+#FUNCTION IS ALREADY SET ON THE REQUEST DATASET
+
+regression_fit()
+
+
+# Create your plot here.
+
+x <- scale(trees$Girth)[,1]
+y <- scale(trees$Height)[,1]
+x_g <- pretty(x, n=100)
+
+Reg <- plot(x,y, xlab = "Girth_lm", ylab = "Height_lm")+
+  lines(x_g, answer[,1], col = 'blue')+
+  lines(x_g, answer[,2], col = "red")
+
+legend('topleft', legend = c('Pred.1', 'Pred.2'),
+       fill = c('blue', 'red'), cex = 0.65)
+
+
+pdf("Regression.pdf")
+
+#------------------------------------------------
+
+library(nycflights13)
+
+
+str(flights)
+head(flights)
+library(magrittr)
+library(ggplot2)
+
+#------------------------------------------------
+# Q2.a)
+#------------------------------------------------
+
+# Create a new dataset 'flights_2' that contains only the flights from 'EWR' to 'LAX'.
+# Recast the 'carrier' variable as a factor, with levels in the following order:
+# 'UA', 'VX', 'AA'.
+
+data("flights")
+
+flightsEL<- flights%>%  subset((origin=="EWR")&(dest=="LAX"))
+flightsEL$carrier<- factor(flightsEL$carrier, levels =c('UA','VX','AA'), ordered = T )
+
+flightsEL$carrier #Levels
+
+#------------------------------------------------
+# Q2.b)
+#------------------------------------------------
+
+# Create a barplot where the bars show the number of flights from 'EWR' to 'LAX' for
+# each of the carriers.  Save the plot as 'plot_1.pdf".
+
+Plot_1 <- ggplot(flightsEL, aes(x = carrier))+
+  geom_bar(color="black", fill="steelblue") +
+  labs(
+    title = "From EWR to LAX",
+    x = 'Carrier',
+    y = 'Frecuency')+
+  scale_y_continuous(breaks = seq(0, 4000, by = 500))
+
+Plot_1
+ggsave(Plot_1, file = 'plot_1.pdf', width = 12, height = 8)
+
+
+#------------------------------------------------
+# Q2.c)
+#------------------------------------------------
+
+# Calculate the average air time for each carrier for flights from 'EWR' to 'LAX'.
+# Plot the estimated densities for each of the underlying empirical distributions
+# (i.e. 1 figure with 3 continuous lines, each corresponding to a different carrier).
+# Save the plot as "plot_2.pdf".
+
+
+Answer2 <- data.frame(setNames(aggregate(flightsEL[,15],
+                                        list(flightsEL$carrier),
+                                        mean,
+                                        na.rm=T), c("Carrer","MeanTime")))
+
+
+Answer2
+
+#Plot_2 (Total density by carrier)
+
+Plot_2<-ggplot(flightsEL, aes(x = air_time))+
+  geom_density(aes(color = carrier))+
+  labs(
+    title = "EWR to LAX air time Density plot",
+    x = 'Air time',
+    y = 'Density')+
+  scale_x_continuous(breaks = seq(200, 410, by = 25))
+
+Plot_2 <- Plot_2+ theme_bw()
+
+Plot_2
+
+ggsave(Plot_2, file = 'plot_2.pdf', width = 12, height = 8)
+
+#------------------------------------------------
+# Q2.d)
+#------------------------------------------------
+
+# When producing the plot for Q2.c) the following warning message appears:
+# "Removed 45 rows containing non-finite values (stat_density)."
+
+
+# Why did we get this warning message?  
+
+# Answer: ---The variable in analysis contain 45 NA value 
+#
+
+# What could be done to avoid this message?
+
+# Answer: ---We could delet the rows with na.omit
+#
+
+#------------------------------------------------
+# Q2.e)
+#------------------------------------------------
+
+# Using the magrittr format, define a function called 'speed' that takes a flights
+# data.frame and adds a new column with value equal to the average speed in miles
+# per hour.
+# Plot bloxplots for the speed by month, for all flights from 'EWR' to 'LAX'.
+# Save the plot as "plot_3.pdf".
+
+#PART 1
+
+speed<- function(x) {
+  inset(x,'Miles_per_hour',
+        value = x %>% use_series ('distance')
+        %>% divide_by (x %>% use_series ('air_time')%>% divide_by(60)))
+  
+}
+
+flightsEL <- speed(flightsEL) #add new column to dataset 
+dim(flightsEL)
+
+#PART2:
+
+flightsEL <- speed(flightsEL)
+
+Plot_3 <-ggplot(flightsEL, aes(x = factor(month, 1:12, labels = month.abb), y= Miles_per_hour))+
+  geom_boxplot()+labs(
+    title = "From EWR to LAX monthly speed",
+    x = 'Months',
+    y = 'Miles per Hour')+
+  scale_y_continuous(breaks =  seq(350, 550, by = 25))
+
+Plot_3 #wind density 
+
+ggsave(Plot_3, file = 'plot_3.pdf', width = 12, height = 8)
+
+
+
+#------------------------------------------------
+# Q2.f)
+#------------------------------------------------
+# Create multiple scatterplots to visually explore how delay at departure affects
+# delay at arrival by carriers ('EWR' to 'LAX' only).
+# The scatterplots share the same y-axis but have different x-axes
+#and different points colours.
+# Save the plot as "plot_4.pdf".
+
+Plot_4<- ggplot(flightsEL, aes(x=dep_delay, y= arr_delay, color=carrier))+ geom_point()+
+  facet_grid(~carrier,scales = 'free_x')+
+  stat_smooth(method = 'lm') #Could be usefull to visualize the slope and figure how diffeent carrier could recover time from the departure delay
+
+Plot_4
+
+ggsave(Plot_4, file = 'plot_4.pdf', width = 12, height = 8)
